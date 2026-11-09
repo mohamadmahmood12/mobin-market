@@ -1,0 +1,226 @@
+
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#10213b">
+<title>مبین مارکت</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f2f5f9;color:#17243b;font-family:Tahoma,Arial}
+header{background:linear-gradient(135deg,#10213b,#126b78);color:white;padding:25px 18px;border-radius:0 0 25px 25px}
+header h1{margin:0;font-size:25px}
+header p{font-size:12px;color:#d5e9ed}
+main{max-width:600px;margin:auto;padding:15px}
+.card{background:white;border-radius:16px;padding:17px;margin-bottom:14px;box-shadow:0 3px 14px #10213b0c}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{background:#f1f6f8;padding:13px;border-radius:12px}
+.stat small{color:#718096}
+.stat strong{display:block;margin-top:9px;font-size:18px}
+.tabs{display:flex;gap:7px;margin:15px 0}
+button{font-family:inherit;border:0;border-radius:10px;padding:13px;cursor:pointer;font-weight:bold}
+.tabs button{flex:1;background:#e2eaf0;color:#345}
+.tabs button.active,.primary{background:#087f83;color:white}
+.primary{width:100%}
+.secondary{background:#e6f1f3;color:#126b78}
+input,select{width:100%;padding:13px;border:1px solid #dce3ec;border-radius:10px;margin:7px 0 14px;font-family:inherit;font-size:14px;background:white}
+label{font-size:13px;font-weight:bold}
+h3{font-size:16px;margin:0 0 15px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.customer{padding:13px 0;border-bottom:1px solid #eee}
+.customer small{display:block;color:#8491a2;margin-top:6px}
+.balance{color:#c34e43;font-weight:bold}
+.zero{color:#07836e;font-weight:bold}
+.hidden{display:none}
+.history{font-size:13px;padding:12px 0;border-bottom:1px solid #eee}
+.empty{text-align:center;color:#8995a5;padding:20px;font-size:13px}
+footer{text-align:center;color:#98a3b3;font-size:11px;padding:20px}
+</style>
+</head>
+<body>
+<header>
+<h1>مبین مارکت</h1>
+<p>مدیریت هوشمند سوپرمارکت</p>
+<div class="stats">
+<div class="stat"><small>تعداد مشتریان</small><strong id="count">۰</strong></div>
+<div class="stat"><small>مجموع بدهی مشتریان</small><strong id="total">۰ تومان</strong></div>
+</div>
+</header>
+<main>
+<div class="tabs">
+<button class="active" onclick="tab('list',this)">مشتریان</button>
+<button onclick="tab('add',this)">مشتری جدید</button>
+<button onclick="tab('transaction',this)">ثبت نسیه</button>
+</div>
+
+<section id="list" class="card">
+<h3>فهرست مشتریان</h3>
+<input id="search" placeholder="جست‌وجوی نام مشتری..." oninput="render()">
+<div id="customers"></div>
+</section>
+
+<section id="add" class="card hidden">
+<h3>ثبت مشتری جدید</h3>
+<label>نام مشتری</label>
+<input id="name" placeholder="نام و نام خانوادگی">
+<label>شماره تماس</label>
+<input id="phone" inputmode="tel" placeholder="شماره موبایل">
+<button class="primary" onclick="addCustomer()">ثبت مشتری</button>
+</section>
+
+<section id="transaction" class="card hidden">
+<h3>ثبت بدهی یا پرداخت</h3>
+<label>مشتری</label>
+<select id="customerSelect"></select>
+<label>نوع عملیات</label>
+<select id="kind">
+<option value="debt">ثبت نسیه جدید</option>
+<option value="payment">دریافت پرداخت</option>
+</select>
+<label>مبلغ به تومان</label>
+<input id="amount" type="number" min="1" placeholder="مبلغ">
+<label>توضیحات</label>
+<input id="note" placeholder="توضیحات اختیاری">
+<button class="primary" onclick="addTransaction()">ثبت عملیات</button>
+</section>
+
+<section id="detail" class="card hidden">
+<div class="row">
+<h3 id="detailName">حساب مشتری</h3>
+<button class="secondary" onclick="tab('list')">بازگشت</button>
+</div>
+<div id="detailBalance" class="stat"></div>
+<h3 style="margin-top:20px">گردش حساب</h3>
+<div id="history"></div>
+</section>
+<footer>مبین مارکت | نسخه اولیه</footer>
+</main>
+
+<script>
+const KEY='mobin_market_v1';
+let data;
+try{
+data=JSON.parse(localStorage.getItem(KEY))||{customers:[],transactions:[]};
+}catch(e){
+data={customers:[],transactions:[]};
+}
+let selected=null;
+
+function save(){
+localStorage.setItem(KEY,JSON.stringify(data));
+render();
+}
+function money(n){
+return Math.round(n).toLocaleString('fa-IR')+' تومان';
+}
+function balance(id){
+return data.transactions
+.filter(t=>t.customerId===id)
+.reduce((s,t)=>s+(t.kind==='debt'?t.amount:-t.amount),0);
+}
+function tab(id,btn){
+['list','add','transaction','detail'].forEach(x=>{
+document.getElementById(x).classList.add('hidden');
+});
+document.getElementById(id).classList.remove('hidden');
+document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('active'));
+if(btn)btn.classList.add('active');
+if(id==='transaction')fillSelect();
+}
+function safe(s){
+return String(s).replace(/[&<>"']/g,c=>({
+'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+}[c]));
+}
+function addCustomer(){
+let name=document.getElementById('name').value.trim();
+let phone=document.getElementById('phone').value.trim();
+if(!name){alert('نام مشتری را وارد کنید');return;}
+data.customers.push({id:Date.now(),name,phone});
+document.getElementById('name').value='';
+document.getElementById('phone').value='';
+save();
+tab('list',document.querySelector('.tabs button'));
+alert('مشتری ثبت شد');
+}
+function fillSelect(){
+let s=document.getElementById('customerSelect');
+s.innerHTML=data.customers.map(c=>
+`<option value="${c.id}">${safe(c.name)}</option>`
+).join('');
+}
+function addTransaction(){
+let id=Number(document.getElementById('customerSelect').value);
+let amount=Number(document.getElementById('amount').value);
+let kind=document.getElementById('kind').value;
+let c=data.customers.find(x=>x.id===id);
+if(!c){alert('ابتدا مشتری ثبت کنید');return;}
+if(!Number.isFinite(amount)||amount<=0){alert('مبلغ معتبر وارد کنید');return;}
+if(kind==='payment'&&amount>Math.max(0,balance(id))){
+if(!confirm('پرداخت بیشتر از بدهی فعلی است. ادامه می‌دهید؟'))return;
+}
+data.transactions.push({
+id:Date.now(),customerId:id,kind,amount,
+note:document.getElementById('note').value.trim(),
+date:new Date().toLocaleString('fa-IR')
+});
+document.getElementById('amount').value='';
+document.getElementById('note').value='';
+save();
+alert('عملیات ثبت شد');
+tab('list',document.querySelector('.tabs button'));
+}
+function openCustomer(id){
+selected=id;
+let c=data.customers.find(x=>x.id===id);
+if(!c)return;
+document.getElementById('detailName').textContent=c.name;
+let b=balance(id);
+document.getElementById('detailBalance').innerHTML=
+'مانده حساب: <strong>'+money(b)+'</strong>';
+let ts=data.transactions.filter(t=>t.customerId===id).reverse();
+document.getElementById('history').innerHTML=ts.length?ts.map(t=>
+`<div class="history">
+<div class="row"><b>${t.kind==='debt'?'بدهی جدید':'پرداخت'}</b>
+<strong>${money(t.amount)}</strong></div>
+<div>${safe(t.note||'بدون توضیحات')}</div>
+<small>${safe(t.date)}</small>
+</div>`
+).join(''):'<div class="empty">هنوز گردش حسابی ثبت نشده است</div>';
+tab('detail');
+}
+function render(){
+document.getElementById('count').textContent=
+data.customers.length.toLocaleString('fa-IR');
+let total=data.customers.reduce((s,c)=>s+Math.max(0,balance(c.id)),0);
+document.getElementById('total').textContent=money(total);
+let q=document.getElementById('search').value.trim().toLowerCase();
+let list=data.customers.filter(c=>
+c.name.toLowerCase().includes(q)||c.phone.includes(q)
+);
+document.getElementById('customers').innerHTML=list.length?list.map(c=>{
+let b=balance(c.id);
+return `<div class="customer">
+<div class="row">
+<div><b>${safe(c.name)}</b>
+<small>${safe(c.phone||'شماره ثبت نشده')}</small></div>
+<div class="${b>0?'balance':'zero'}">${money(b)}</div>
+</div>
+<div class="row" style="margin-top:10px">
+<button class="secondary" onclick="openCustomer(${c.id})">گردش حساب</button>
+<button class="secondary" onclick="quickDebt(${c.id})">ثبت نسیه</button>
+</div>
+</div>`;
+}).join(''):'<div class="empty">هنوز مشتری ثبت نشده است</div>';
+}
+function quickDebt(id){
+fillSelect();
+document.getElementById('customerSelect').value=id;
+document.getElementById('kind').value='debt';
+tab('transaction',document.querySelectorAll('.tabs button')[2]);
+}
+render();
+</script>
+</body>
+</html>
